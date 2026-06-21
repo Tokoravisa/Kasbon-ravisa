@@ -85,14 +85,23 @@ async function saveData(data) {
     body: JSON.stringify(data),
     redirect: 'follow', // Apps Script Web App selalu redirect 302 ke googleusercontent.com; pastikan diikuti
   });
-  if (!res.ok) throw new Error('Gagal menyimpan ke Google Sheets (status ' + res.status + ')');
-  const json = await res.json();
+  const rawText = await res.text();
+  if (!res.ok) {
+    throw new Error('Gagal menyimpan ke Google Sheets (status ' + res.status + '). Isi respons: ' + rawText.slice(0, 200));
+  }
+  let json;
+  try {
+    json = JSON.parse(rawText);
+  } catch (parseErr) {
+    // Respons bukan JSON sama sekali - kemungkinan halaman HTML (login/permission Google)
+    throw new Error('Respons server bukan format JSON yang diharapkan. Awal respons: ' + rawText.slice(0, 200));
+  }
   if (json.error) throw new Error(json.error);
   // PENTING: pastikan benar-benar doPost yang terpanggil, bukan doGet (bisa terjadi kalau
   // ada redirect yang mengubah method secara diam-diam, sehingga save terlihat sukses
   // padahal sebenarnya cuma membaca data lama tanpa menulis apa pun).
   if (json.handler !== 'doPost') {
-    throw new Error('Permintaan simpan ternyata diproses sebagai "' + (json.handler || 'tidak dikenal') + '", bukan doPost. Data TIDAK tersimpan.');
+    throw new Error('Permintaan simpan ternyata diproses sebagai "' + (json.handler || 'tidak dikenal') + '", bukan doPost. Data TIDAK tersimpan. Respons lengkap: ' + rawText.slice(0, 300));
   }
   // Simpan juga ke cache lokal supaya konsisten dengan data terbaru
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
